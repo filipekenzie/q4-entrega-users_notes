@@ -1,103 +1,131 @@
-const { json, request, response } = require("express");
-const express = require("express");
-const { v4: uuidv4 } = require("uuid");
+let express = require("express");
+let { v4: uuidv4 } = require("uuid");
 
-const app = express();
+let app = express();
 app.use(express.json());
 
-const customers = [];
+let users = [];
 
-//Middleware
-//Next define se ele vai pra frente ou se ele vai intercptar.
-// Request na api -> middleware -> minha requisição
-const verifyIfExistsAccountCPF = (request, response, next) => {
-  const { cpf } = request.body || request.params;
+//Middleware para verificar usuário
+let verifyIfExistsUserCPF = (request, response, next) => {
+  let { cpf } = request.params;
 
-  const customer = customers.find((customer) => customer.cpf === cpf);
+  let user = users.find((user) => user.cpf == cpf);
 
-  if (!customer) {
-    return response.status(400).json({ error: "invalid cpf" });
+  if (!user) {
+    return response
+      .status(400)
+      .json({ error: "invalid cpf - user is not registered" });
   }
 
-  //Como passar esse customer pra frente?
-  //Assim:
-  request.customer = customer;
+  request.user = user;
 
   return next();
 };
 
-//Dados que nossa conta deve ter
-/**
- * cpf - string
- * name -string
- * id - uuid
- * statement []  - Extrato de cŕeditos e débitos/ Lançamentos da nossa conta.
- */
-app.post("/account", (request, response) => {
-  const { cpf, name } = request.body;
+//CRUD - USER
+//CREATE - Cadastra usuário
+app.post("/users", (request, response) => {
+  let { cpf, name } = request.body;
 
-  customerAlreadyExists = customers.some((customers) => customers.cpf === cpf);
+  userAlreadyExists = users.some((users) => users.cpf === cpf);
 
-  if (customerAlreadyExists) {
-    return response.status(400).json({ error: "Customer already exists!" });
+  if (userAlreadyExists) {
+    return response.status(400).json({ error: "user already exists!" });
   }
 
-  const customer = { id: uuidv4(), name, cpf, statement: [] };
+  let user = { id: uuidv4(), name, cpf, notes: [] };
 
-  customers.push(customer);
+  users.push(user);
 
-  return response.status(201).json(customer);
+  return response.status(201).json(user);
 });
 
-app.get("/account", (request, response) => {
-  return response.status(200).json(customers);
+//READ - Lista todos os usuários e suas notas
+app.get("/users", (request, response) => {
+  return response.status(200).json(users);
 });
 
-app.get("/statement/:cpf", verifyIfExistsAccountCPF, (request, response) => {
-  return response.status(200).json(customer.statement);
-});
+//UPDATE - Edita um determinado usuário por cpf
+app.patch("/users/:cpf", verifyIfExistsUserCPF, (request, response) => {
+  let { user } = request;
+  let { cpf, name } = request.body;
 
-app.post("/withdraw", (request, response) => {
-  const { cpf, value } = request.body;
-
-  const customer = customers.find((customer) => customer.cpf === cpf);
-
-  if (!customer) {
-    return response.status(400).json({ error: "invalid cpf" });
-  }
-
-  const totalDeposited = customers.reduce(
-    (acc, customer) => customer.statement.value + acc
+  let usersUpdated = users.filter(
+    (userToBeUpdated) => userToBeUpdated.cpf !== user.cpf
   );
+  let userUpdated = { ...user, cpf, name };
 
-  return response.status(200).json({ totalInAccount: totalDeposited });
+  usersUpdated.push(userUpdated);
+  users = usersUpdated;
+
+  return response.status(201).json({ messagem: "User is updated", users });
 });
 
-app.get("/statament/date", verifyIfExistsAccountCPF, (request, response) => {
-  const { customer } = request;
-  const { date } = request.params;
-
-  const dateFormat = new Data(date + "00:00");
-
-  const statement = customer.statement.fillter(
-    ({ created_at }) =>
-      created_at.toDateString() === new Date(dateFormat).toDateString()
+//DELETE - Deleta um determinado usuário por cpf
+app.delete("/users/:cpf", verifyIfExistsUserCPF, (request, response) => {
+  let { user } = request;
+  let usersUpdated = users.filter(
+    (userToBeUpdated) => userToBeUpdated.cpf !== user.cpf
   );
+  users = usersUpdated;
 
-  return response.json(statement);
+  return response.status(201).json({ messagem: "User is deleted", users });
 });
 
-app.post("/deposit", verifyIfExistsAccountCPF, (request, response) => {
-  const { customer } = request;
-  const { description, amount } = request.body;
+// ------------  CRUD - NOTES ----------------
+//CREATE - Cadastra nota de um usuário poe cpf
+app.post("/users/:cpf/notes", verifyIfExistsUserCPF, (request, response) => {
+  let { user } = request;
+  let { title, content } = request.body;
 
-  customer.statement.push({ created_at: new Date(), amount, description });
-
-  customers.push(customer);
+  user.notes.push({id: uuidv4(), created_at: new Date(), title, content });
 
   return response
     .status(201)
-    .json({ messagem: `${amount} was added into ${customer.cpf}` });
+    .json({ messagem: `${title} was added into ${user.name}'s notes` });
 });
 
+//READ - Lista as notas de um usuário por cpf
+app.get("/users/:cpf/notes", verifyIfExistsUserCPF, (request, response) => {
+  let { user } = request;
+  return response.status(200).json(user.notes);
+});
+
+//UPDATE - Altera nota de um usuário
+app.patch(
+  "/user/:cpf/notes/:id",
+  verifyIfExistsUserCPF,
+  (request, response) => {
+    let { user } = request;
+    let { id } = request.params;
+    let { title, content } = request.body;
+
+    let note = user.notes.find((note) => note.id === id);
+    let noteUpdated = { ...note, title, content, updated_at: new Date() };
+    
+    let notesUpdated = user.notes.filter(note => note.id !== id);
+    notesUpdated.push(noteUpdated);
+
+    user.notes = notesUpdated;
+
+    return response.status(200).json(user.notes);
+  }
+);
+
+//DELETE - Exclui uma determinada nota de um usuário por cpf e id
+app.delete(
+  "/usera/:cpf/notes/:id",
+  verifyIfExistsUserCPF,
+  (request, response) => {
+    let { user } = request;
+    let { id } = request.params;
+    
+    let notesUpdated = user.notes.filter(note => note.id !== id);
+
+    user.notes = notesUpdated;
+
+    return response.status(200).json(user.notes);
+  }
+);
 app.listen(3333);
